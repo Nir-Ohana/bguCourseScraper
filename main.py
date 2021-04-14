@@ -1,6 +1,6 @@
 import json
 import pprint
-
+import re
 import win32api
 import win32con
 import time
@@ -9,6 +9,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select
+
+CONST_IS_EXAM = "ללא בחינה"
 
 
 def click(x, y):
@@ -63,14 +65,16 @@ def scrap_courses(department_number):
 
 if __name__ == '__main__':
     courses = {}
+    courses_extended = {}
     departments = []
+    course_page_template = 'https://bgu4u.bgu.ac.il/pls/scwp/!app.gate?app=ann&lang=he&step=3&st=s&popup=cns' \
+                           '&rn_course_department={department}&rn_course_degree_level={' \
+                           'course_degree_level}&rn_course={' \
+                           'course_number}&rn_course_details=1&rn_course_ins=0&rn_year={year}&rn_semester={' \
+                           'semester_number} '
 
     driver = webdriver.Chrome('C:\\Users\\Nir\\PycharmProjects\\seleniumCourseScraper\\chromedriver.exe')
     driver.get('https://bgu4u.bgu.ac.il/pls/scwp/!app.gate?app=ann')
-    # department = WebDriverWait(driver, 10).until(
-    #     EC.visibility_of_element_located((By.CLASS_NAME, "menuLinkU"))
-    # )[0].click()
-    # driver.find_element_by_class_name('menuLinkU')[0].click()
     frame = driver.find_element_by_name('main')
     driver.switch_to.frame(frame)
     driver.implicitly_wait(5)
@@ -81,13 +85,11 @@ if __name__ == '__main__':
         department_number_name_text = str(options[index].text).split(' - ')
         departments.append(department_number_name_text[0])
 
-    departments = departments[1:]
     try:
         for department_number in departments:
             try:
                 if department_number.startswith('0'):
                     department_number = department_number.lstrip('0')
-                print(department_number)
                 result = scrap_courses(department_number)
                 if result is not None:
                     courses.update(
@@ -95,7 +97,6 @@ if __name__ == '__main__':
                             department_number: result
                         }
                     )
-                # print(pprint.pformat(courses))
                 time.sleep(2)
             except Exception as e:
                 print(f"Exception in main : {str(e)}")
@@ -105,11 +106,68 @@ if __name__ == '__main__':
                 department.clear()
                 continue
 
+        for department in list(courses.keys()):
+            try:
+                print(department)
+                courses_extended[department] = {}
+                for course in list(courses[department].keys()):
+                    print(course)
+                    _, course_degree_level, course_number = courses[department][course]['course_number'].split('.')
+                    year, semester_number = courses[department][course]['open_in'].split('-')
+                    url = course_page_template.format(department=department,
+                                                      course_degree_level=course_degree_level,
+                                                      course_number=course_number,
+                                                      year=year, semester_number=semester_number)
+                    driver.get(url)
+                    frame = driver.find_element_by_name('main')
+                    driver.switch_to.frame(frame)
+                    course_unordered_list = driver.find_elements_by_tag_name('li')
+
+                    credit_points = str(course_unordered_list[4].text).split(':')[1].rstrip('.00')
+                    test = str(course_unordered_list[12].text)
+                    li_list = driver.find_elements_by_class_name('BlackInput')
+
+                    time = ''
+                    time_re = re.compile('(([01][0-9]|2[0-3]):([0-5][0-9]))')
+                    match_time = time_re.findall(str(li_list[3].text))
+                    if match_time is not None and len(match_time) == 2:
+                        time = match_time[0][0] + '-' + match_time[1][0]
+
+                    day = ''
+                    day_time = ''
+                    day_re = re.compile('(יום [א|ב|ג|ד|ה|ו])')
+                    match_day = day_re.findall(str(li_list[3].text))
+                    if len(match_day) > 0:
+                        day_time = match_day[0] + ' ' + time
+
+                    print(day_time)
+                    courses_extended[department][course] = {
+                        "course_number": courses[department][course]['course_number'],
+                        "open_in": courses[department][course]['open_in'],
+                        "credit_points": credit_points,
+                        "test_exist": not (CONST_IS_EXAM in test),
+                        "professor name": li_list[2].text,
+                        "time": day_time
+                    }
+
+                    print('\n')
+                    print('_' * 69)
+
+            except Exception as e:
+                print(f"Exception in scraping specific course in department : {department}\n{str(e)}")
+                department = WebDriverWait(driver, 10).until(
+                    EC.visibility_of_element_located((By.ID, "on_course_department"))
+                )
+                department.clear()
+                continue
+
+
     finally:
-        # with open('courses.json', 'w') as f:
-        #     json.dump(courses, f, ensure_ascii=False)
-        to_save = json.dumps(courses, ensure_ascii=False, indent=4, sort_keys=True)
+        courses_to_save = json.dumps(courses, ensure_ascii=False, indent=4, sort_keys=True)
+        extened_courses_to_save = json.dumps(courses_extended, ensure_ascii=False, indent=4, sort_keys=True)
         with open('courses.json', 'wb') as f:
-            f.write(to_save.encode('utf-8'))
+            f.write(courses_to_save.encode('utf-8'))
+        with open('extended_courses.json', 'wb') as f:
+            f.write(extened_courses_to_save.encode('utf-8'))
         driver.implicitly_wait(5)
         driver.quit()
