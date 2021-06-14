@@ -69,7 +69,7 @@ def scrap_courses(department_number, department_name):
 
 if __name__ == '__main__':
     courses = []
-    courses_extended = {}
+    courses_extended = []
     departments = []
     course_page_template = 'https://bgu4u.bgu.ac.il/pls/scwp/!app.gate?app=ann&lang=he&step=3&st=s&popup=cns' \
                            '&rn_course_department={department}&rn_course_degree_level={' \
@@ -110,60 +110,66 @@ if __name__ == '__main__':
                 department.clear()
                 continue
 
-        # for department in list(courses.keys()):
-        #     try:
-        #         print(department)
-        #         courses_extended[department] = {}
-        #         for course in list(courses[department].keys()):
-        #             print(course)
-        #             _, course_degree_level, course_number = courses[department][course]['course_number'].split('.')
-        #             year, semester_number = courses[department][course]['open_in'].split('-')
-        #             url = course_page_template.format(department=department,
-        #                                               course_degree_level=course_degree_level,
-        #                                               course_number=course_number,
-        #                                               year=year, semester_number=semester_number)
-        #             driver.get(url)
-        #             frame = driver.find_element_by_name('main')
-        #             driver.switch_to.frame(frame)
-        #             course_unordered_list = driver.find_elements_by_tag_name('li')
-        #
-        #             credit_points = str(course_unordered_list[4].text).split(':')[1].rstrip('.00')
-        #             test = str(course_unordered_list[12].text)
-        #             li_list = driver.find_elements_by_class_name('BlackInput')
-        #
-        #             time = ''
-        #             time_re = re.compile('(([01][0-9]|2[0-3]):([0-5][0-9]))')
-        #             match_time = time_re.findall(str(li_list[3].text))
-        #             if match_time is not None and len(match_time) == 2:
-        #                 time = match_time[0][0] + '-' + match_time[1][0]
-        #
-        #             day = ''
-        #             day_time = ''
-        #             day_re = re.compile('(יום [א|ב|ג|ד|ה|ו])')
-        #             match_day = day_re.findall(str(li_list[3].text))
-        #             if len(match_day) > 0:
-        #                 day_time = match_day[0] + ' ' + time
-        #
-        #             print(day_time)
-        #             courses_extended[department][course] = {
-        #                 "course_number": courses[department][course]['course_number'],
-        #                 # "open_in": courses[department][course]['open_in'],
-        #                 "credit_points": credit_points,
-        #                 "test_exist": not (CONST_IS_EXAM in test),
-        #                 "professor name": li_list[2].text
-        #                 # "time": day_time
-        #             }
-        #
-        #             print('\n')
-        #             print('_' * 69)
-        #
-        #     except Exception as e:
-        #         print(f"Exception in scraping specific course in department : {department}\n{str(e)}")
-        #         department = WebDriverWait(driver, 10).until(
-        #             EC.visibility_of_element_located((By.ID, "on_course_department"))
-        #         )
-        #         department.clear()
-        #         continue
+        for course in courses:
+            department = course['department_number']
+
+            try:
+                print(department)
+                # for course in list(courses[department].keys()):
+                print(course)
+                _, course_degree_level, course_number = course['course_number'].split('.')
+                year, semester_number = course['open_in'].split('-')
+                url = course_page_template.format(department=department,
+                                                  course_degree_level=course_degree_level,
+                                                  course_number=course_number,
+                                                  year=year, semester_number=semester_number)
+                driver.get(url)
+                frame = driver.find_element_by_name('main')
+                driver.switch_to.frame(frame)
+                course_unordered_list = driver.find_elements_by_tag_name('li')
+
+                credit_points = str(course_unordered_list[4].text).split(':')[1].rstrip('.00').strip()
+                test = str(course_unordered_list[12].text)
+
+                course_summary = str(course_unordered_list[15].text).split('תקציר:')
+                if len(course_summary) > 1:
+                    course_summary = course_summary[1].strip()
+                else:
+                    course_summary = ''
+                # li_list = driver.find_elements_by_class_name('BlackInput')
+
+                # time = ''
+                # time_re = re.compile('(([01][0-9]|2[0-3]):([0-5][0-9]))')
+                # match_time = time_re.findall(str(li_list[3].text))
+                # if match_time is not None and len(match_time) == 2:
+                #     time = match_time[0][0] + '-' + match_time[1][0]
+
+                # day = ''
+                # day_time = ''
+                # day_re = re.compile('(יום [א|ב|ג|ד|ה|ו])')
+                # match_day = day_re.findall(str(li_list[3].text))
+                # if len(match_day) > 0:
+                #     day_time = match_day[0] + ' ' + time
+
+                # print(day_time)
+                course_extended = {
+                    **course,
+                    "credit_point": credit_points,
+                    "test_exists": not (CONST_IS_EXAM in test),
+                    "course_summary": course_summary
+                }
+                courses_extended.append(course_extended)
+
+                print('\n')
+                print('_' * 69)
+
+            except Exception as e:
+                print(f"Exception in scraping specific course in department : {department}\n{str(e)}")
+                department = WebDriverWait(driver, 10).until(
+                    EC.visibility_of_element_located((By.ID, "on_course_department"))
+                )
+                department.clear()
+                continue
 
 
     finally:
